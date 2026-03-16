@@ -43,7 +43,7 @@ Zero dependencies. Single HTML file with embedded CSS, WebGL shader, and Canvas 
 
 ## Community
 
-- **Discord**: [Join us](https://discord.gg/4zcfF5J4s4) - get notified when 2X goes live
+- **Discord**: [Join us](https://absolutely.works) - get notified when 2X goes live
 - **clanker.watch** - AI service uptime monitoring
 - **clanker.report** - Developer sentiment dashboard
 - **clanker.win** - AI benchmarks
