@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude 2X - Usage Limits Doubled</title>
+<meta name="description" content="Track when Claude Pro 2X usage limits are active. Live countdown, peak hour detection, and more.">
+<meta property="og:title" content="Claude 2X - Usage Limits Doubled">
+<meta property="og:description" content="Track when Claude Pro 2X usage limits are active during off-peak hours. Mar 13-28, 2026.">
+<meta name="theme-color" content="#0a0a14">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: #0a0a14;
+    color: #e5e5e5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+  #noise { z-index: 0; }
+  #stars { z-index: 1; pointer-events: none; }
+
+  .content {
+    position: relative; z-index: 2; text-align: center;
+    max-width: 560px; padding: 2rem; cursor: default;
+  }
+
+  .label {
+    font-size: 0.875rem; font-weight: 600; letter-spacing: 0.15em;
+    text-transform: uppercase; color: rgba(139, 92, 246, 0.8); margin-bottom: 1rem;
+  }
+
+  .headline {
+    font-size: 2.5rem; font-weight: 700; color: #e5e5e5; line-height: 1.2;
+    margin-bottom: 0.375rem; white-space: nowrap;
+  }
+  .headline .countdown {
+    background: linear-gradient(90deg, #8b5cf6, #c084fc);
+    background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sub { font-size: 1rem; color: #888; margin-bottom: 1.75rem; line-height: 1.5; }
+  .sub .tz { margin-left: 0.375rem; opacity: 0.6; }
+
+  .timeline { width: 100%; margin-bottom: 1.5rem; }
+  .timeline-labels { display: flex; justify-content: space-between; font-size: 0.8125rem; color: #666; margin-bottom: 0.5rem; }
+  .timeline-bar { height: 5px; background: rgba(139, 92, 246, 0.15); border-radius: 4px; overflow: hidden; }
+  .timeline-fill { height: 100%; background: linear-gradient(90deg, #8b5cf6, #c084fc); border-radius: 4px; transition: width 1s linear; }
+  .timeline-dates { display: flex; justify-content: space-between; font-size: 0.75rem; color: #555; margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .badge {
+    display: inline-block; font-size: 0.8125rem; font-weight: 600;
+    padding: 0.3rem 0.875rem; border-radius: 10px; margin-bottom: 2rem;
+    border: 1px solid transparent;
+  }
+
+  .surfaces { font-size: 0.875rem; color: #666; margin-bottom: 0.5rem; line-height: 2; }
+  .surfaces .surface {
+    display: inline-block; padding: 0.2rem 0.625rem; margin: 0.2rem;
+    border: 1px solid rgba(139, 92, 246, 0.12); border-radius: 6px;
+    font-size: 0.75rem; color: #777; letter-spacing: 0.02em;
+  }
+
+  footer {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
+    padding: 1.5rem; text-align: center;
+  }
+  .discord-cta { font-size: 0.875rem; color: #888; margin-bottom: 0.625rem; }
+  .discord-cta a { color: #a78bfa; text-decoration: none; }
+  .discord-cta a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .footer-links { display: flex; justify-content: center; gap: 1rem; font-size: 0.8125rem; }
+  .footer-links a { color: #555; text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: #888; }
+  .footer-links .dot { color: #333; }
+
+  @media (max-width: 600px) {
+    .headline { font-size: 1.5rem; white-space: normal; }
+    .sub { font-size: 0.8125rem; }
+    .content { padding: 1.25rem; max-width: 100%; }
+    .label { font-size: 0.75rem; }
+    .surfaces .surface { font-size: 0.6875rem; }
+    footer { padding: 1rem; }
+    .footer-links { gap: 0.5rem; font-size: 0.75rem; }
+  }
+</style>
+</head>
+<body>
+
+  <canvas id="noise" aria-hidden="true"></canvas>
+  <canvas id="stars"></canvas>
+
+  <div class="content" id="main">
+    <div class="label" id="promo-label"></div>
+    <div class="headline" id="promo-headline"></div>
+    <div class="sub" id="promo-sub"></div>
+
+    <div class="timeline" id="timeline">
+      <div class="timeline-labels">
+        <span>Mar 13</span>
+        <span id="timeline-now"></span>
+        <span>Mar 28</span>
+      </div>
+      <div class="timeline-bar" id="timeline-bar">
+        <div class="timeline-fill" id="timeline-fill"></div>
+      </div>
+      <div class="timeline-dates">
+        <span>Start</span>
+        <span>End</span>
+      </div>
+    </div>
+
+    <div class="badge" id="promo-badge"></div>
+
+    <div class="surfaces" id="surfaces">
+      <span class="surface">Claude Web</span>
+      <span class="surface">Desktop App</span>
+      <span class="surface">Mobile</span>
+      <span class="surface">Cowork</span>
+      <span class="surface">Claude Code</span>
+      <span class="surface">Excel Add-in</span>
+      <span class="surface">PowerPoint Add-in</span>
+    </div>
+  </div>
+
+  <footer>
+    <div class="discord-cta">Get notified on <a href="https://discord.gg/4zcfF5J4s4">Discord</a></div>
+    <div class="footer-links">
+      <a href="https://clanker.watch">clanker.watch</a>
+      <span class="dot">·</span>
+      <a href="https://clanker.report">clanker.report</a>
+      <span class="dot">·</span>
+      <a href="https://clanker.win">clanker.win</a>
+    </div>
+  </footer>
+
+  <script>
+    // ── WebGL Liquid Noise Background ──
+    (function() {
+      var c = document.getElementById('noise');
+      var gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (!gl) { c.style.display = 'none'; return; }
+
+      var w2 = gl instanceof WebGL2RenderingContext;
+      var vh = w2 ? '#version 300 es' : '';
+      var ik = w2 ? 'in' : 'attribute';
+      var ok = w2 ? 'out vec4 o;' : '';
+      var fo = w2 ? 'o' : 'gl_FragColor';
+
+      var vs = vh + '\n' + ik + ' vec2 a;void main(){gl_Position=vec4(a,0,1);}';
+      var fs = vh + '\nprecision highp float;uniform float t;uniform vec2 r;uniform vec3 b,n;' + ok +
+        'vec3 m2(vec3 x){return x-floor(x*(1./289.))*289.;}vec2 m2v(vec2 x){return x-floor(x*(1./289.))*289.;}vec3 pm(vec3 x){return m2(((x*34.)+1.)*x);}' +
+        'float sn(vec2 v){const vec4 C=vec4(.2113,.3660,-.5773,.0244);vec2 i=floor(v+dot(v,C.yy));vec2 x0=v-i+dot(i,C.xx);vec2 i1=(x0.x>x0.y)?vec2(1,0):vec2(0,1);vec4 x12=x0.xyxy+C.xxzz;x12.xy-=i1;i=m2v(i);vec3 p=pm(pm(i.y+vec3(0,i1.y,1))+i.x+vec3(0,i1.x,1));vec3 m=max(.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.);m=m*m;m=m*m;vec3 x=2.*fract(p*C.www)-1.;vec3 h=abs(x)-.5;vec3 ox=floor(x+.5);vec3 a0=x-ox;m*=1.7928-0.8537*(a0*a0+h*h);vec3 g;g.x=a0.x*x0.x+h.x*x0.y;g.yz=a0.yz*x12.xz+h.yz*x12.yw;return 130.*dot(m,g);}' +
+        'float ha(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}' +
+        'void main(){vec2 uv=gl_FragCoord.xy/r;float a=r.x/r.y;vec2 st=vec2(uv.x*a,uv.y);float n1=sn(st*.9+vec2(sin(t*.4)*.5,cos(t*.3)*.5));float n2=sn(st*2.2+vec2(cos(t*.5)*.4,sin(t*.45)*.4))*.5;float d=(n1+n2)*.5*.035;vec3 col=b+d*n;col+=(ha(gl_FragCoord.xy+fract(t)*100.)-.5)*(1.5/255.);' + fo + '=vec4(col,1);}';
+
+      function comp(type, src) {
+        var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { c.style.display = 'none'; return null; }
+        return s;
+      }
+      var vsh = comp(gl.VERTEX_SHADER, vs), fsh = comp(gl.FRAGMENT_SHADER, fs);
+      if (!vsh || !fsh) return;
+      var pg = gl.createProgram(); gl.attachShader(pg, vsh); gl.attachShader(pg, fsh); gl.linkProgram(pg);
+      if (!gl.getProgramParameter(pg, gl.LINK_STATUS)) { c.style.display = 'none'; return; }
+      gl.useProgram(pg);
+      var bf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+      var ap = gl.getAttribLocation(pg, 'a'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 2, gl.FLOAT, false, 0, 0);
+      var ut = gl.getUniformLocation(pg, 't'), ur = gl.getUniformLocation(pg, 'r');
+      var ub = gl.getUniformLocation(pg, 'b'), un = gl.getUniformLocation(pg, 'n');
+      gl.uniform3f(ub, 0.051, 0.051, 0.102); gl.uniform3f(un, 1.0, 0.4, 1.5);
+
+      window.setNoiseTheme = function(theme) {
+        if (theme === 'purple') { gl.uniform3f(ub, 0.051, 0.051, 0.102); gl.uniform3f(un, 1.0, 0.4, 1.5); }
+        else { gl.uniform3f(ub, 0.06, 0.06, 0.07); gl.uniform3f(un, 0.8, 0.8, 0.9); }
+      };
+
+      function resize() {
+        var d = Math.min(devicePixelRatio, 2); c.width = innerWidth * d; c.height = innerHeight * d;
+        gl.viewport(0, 0, c.width, c.height); gl.uniform2f(ur, c.width, c.height);
+      }
+      addEventListener('resize', resize); resize();
+
+      var st = 0, el = 0, rf;
+      function render(now) {
+        if (!st) st = now; el = (now - st) * 0.001;
+        gl.uniform1f(ut, el); gl.drawArrays(gl.TRIANGLES, 0, 3); rf = requestAnimationFrame(render);
+      }
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) cancelAnimationFrame(rf);
+        else rf = requestAnimationFrame(function(now) { st = now - el * 1000; rf = requestAnimationFrame(render); });
+      });
+      rf = requestAnimationFrame(render);
+    })();
+
+    // ── Canvas 3D Starfield ──
+    (function() {
+      var canvas = document.getElementById('stars');
+      var ctx = canvas.getContext('2d');
+      var W, H;
+
+      function resize() {
+        var dpr = window.devicePixelRatio || 1;
+        W = window.innerWidth; H = window.innerHeight;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      resize(); window.addEventListener('resize', resize);
+
+      function rand(a, b) { return a + Math.random() * (b - a); }
+
+      var FOCAL = 700, COUNT = 1400, stars = [];
+
+      function resetStar(s, full) {
+        var z = full ? rand(0.5, 12) : rand(5, 12);
+        var angle = Math.random() * Math.PI * 2;
+        var minD = full ? z * 0.08 : z * 0.12;
+        var dist = rand(minD, z * 0.8);
+        s.x = Math.cos(angle) * dist * (W / FOCAL);
+        s.y = Math.sin(angle) * dist * (H / FOCAL);
+        s.z = z; s.pz = z; s.o = rand(0.3, 0.9);
+      }
+
+      for (var i = 0; i < COUNT; i++) { var s = {}; resetStar(s, true); stars.push(s); }
+
+      function project(x, y, z) {
+        var k = FOCAL / z;
+        return { sx: cx + x * k, sy: cy + y * k, r: Math.max(0.4, k * 0.005) };
+      }
+
+      var warpTarget = 0, warpT = 0, cx, cy;
+      var content = document.getElementById('main');
+      var footer = document.querySelector('footer');
+      content.addEventListener('mouseenter', function() { warpTarget = 1; });
+      content.addEventListener('mouseleave', function() { warpTarget = 0; });
+      footer.addEventListener('mouseenter', function() { warpTarget = 1; });
+      footer.addEventListener('mouseleave', function() { warpTarget = 0; });
+
+      var last = performance.now();
+
+      function frame(now) {
+        var dt = Math.min(now - last, 50); last = now;
+        var t = dt / 16.67;
+        cx = W * 0.5; cy = H * 0.5;
+
+        warpT += (warpTarget - warpT) * (1 - Math.exp(-dt * 0.003));
+        if (Math.abs(warpT - warpTarget) < 0.001) warpT = warpTarget;
+
+        ctx.clearRect(0, 0, W, H);
+
+        var zSpeed = 0.001 + warpT * 0.3;
+
+        for (var i = 0; i < stars.length; i++) {
+          var s = stars[i];
+          s.pz = s.z;
+          s.z -= zSpeed * t;
+          s.x += 0.008 * (1 - warpT) * t;
+
+          var a = project(s.x, s.y, s.pz);
+          var b = project(s.x, s.y, s.z);
+
+          if (b.sx < -300 || b.sx > W + 300 || b.sy < -300 || b.sy > H + 300 || s.z <= 0.02) {
+            resetStar(s, false); continue;
+          }
+
+          var vx = b.sx - a.sx, vy = b.sy - a.sy;
+          var speed2D = Math.hypot(vx, vy);
+          var tailLen = Math.min(200, speed2D * (1.5 + 7 * warpT));
+
+          if (tailLen > 1.5) {
+            var ux = vx / (speed2D || 1), uy = vy / (speed2D || 1);
+            var tx = b.sx - ux * tailLen, ty = b.sy - uy * tailLen;
+            var g = ctx.createLinearGradient(tx, ty, b.sx, b.sy);
+            g.addColorStop(0, 'rgba(140,160,255,0)');
+            g.addColorStop(0.6, 'rgba(200,220,255,' + (0.15 + 0.4 * warpT).toFixed(2) + ')');
+            g.addColorStop(1, 'rgba(255,255,255,0.9)');
+            ctx.strokeStyle = g;
+            ctx.lineWidth = Math.max(0.5, b.r * (0.6 + warpT * 0.4));
+            ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+          }
+
+          ctx.globalAlpha = s.o;
+          ctx.fillStyle = '#fff';
+          ctx.beginPath(); ctx.arc(b.sx, b.sy, b.r, 0, Math.PI * 2); ctx.fill();
+        }
+
+        if (warpT > 0.01) {
+          var radius = Math.max(W, H) * 0.45;
+          var dark = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+          dark.addColorStop(0, 'rgba(0,0,0,' + (0.7 * warpT).toFixed(3) + ')');
+          dark.addColorStop(0.35, 'rgba(0,0,0,' + (0.3 * warpT).toFixed(3) + ')');
+          dark.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalAlpha = 1; ctx.fillStyle = dark; ctx.fillRect(0, 0, W, H);
+        }
+
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    })();
+
+    // ── Promotion Countdown ──
+    (function() {
+      var PEAK_START = 12, PEAK_END = 18;
+      var PROMO_START = new Date('2026-03-13T00:00:00Z');
+      var PROMO_END = new Date('2026-03-28T00:00:00Z');
+      var PROMO_DAYS = 15;
+
+      var elLabel = document.getElementById('promo-label');
+      var elHead = document.getElementById('promo-headline');
+      var elSub = document.getElementById('promo-sub');
+      var elBadge = document.getElementById('promo-badge');
+      var elFill = document.getElementById('timeline-fill');
+      var elNow = document.getElementById('timeline-now');
+      var elBar = document.getElementById('timeline-bar');
+      var elTimeline = document.getElementById('timeline');
+      var elSurfaces = document.getElementById('surfaces');
+
+      function getUserTZ() {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, ' '); }
+        catch(e) { return ''; }
+      }
+      var userTZ = getUserTZ();
+
+      function getState() {
+        var now = new Date();
+        var h = now.getUTCHours();
+        var day = now.getUTCDay();
+        var isWeekday = day >= 1 && day <= 5;
+        var isPeak = isWeekday && h >= PEAK_START && h < PEAK_END;
+        var isActive = now >= PROMO_START && now < PROMO_END;
+        var is2x = isActive && !isPeak;
+
+        var ms = 0, label = '';
+        if (is2x) {
+          var next = new Date(now); next.setUTCHours(PEAK_START, 0, 0, 0);
+          if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+          // Skip weekends
+          while (next.getUTCDay() === 0 || next.getUTCDay() === 6) next.setUTCDate(next.getUTCDate() + 1);
+          ms = next.getTime() - now.getTime();
+          label = '2X ends in';
+        } else if (isActive) {
+          var next = new Date(now); next.setUTCHours(PEAK_END, 0, 0, 0);
+          if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+          ms = next.getTime() - now.getTime();
+          label = '2X resumes in';
+        }
+
+        var elapsed = Math.max(0, now.getTime() - PROMO_START.getTime());
+        var total = PROMO_END.getTime() - PROMO_START.getTime();
+        var progress = Math.min(100, (elapsed / total) * 100);
+        var dayNum = Math.min(PROMO_DAYS, Math.floor(elapsed / 86400000) + 1);
+
+        return { is2x: is2x, isPeak: isPeak, isActive: isActive, ms: ms, label: label, progress: progress, dayNum: dayNum, ended: now >= PROMO_END };
+      }
+
+      function fmt(ms) {
+        if (ms <= 0) return '';
+        var s = Math.floor(ms / 1000);
+        var h = Math.floor(s / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var sec = s % 60;
+        if (h > 24) { var d = Math.floor(h / 24); return d + 'd ' + (h % 24) + 'h'; }
+        return h > 0 ? h + 'h ' + m + 'm ' + sec + 's' : m + 'm ' + sec + 's';
+      }
+
+      function render() {
+        var st = getState();
+
+        if (st.ended) {
+          elLabel.textContent = 'Claude Promotion';
+          elLabel.style.color = 'rgba(139,92,246,0.5)';
+          elHead.innerHTML = '2X Promotion Ended';
+          elHead.style.color = '#666';
+          elSub.innerHTML = 'The 2X usage promotion ran Mar 13-28, 2026.<br>Thanks for participating!';
+          elSub.style.color = '#555';
+          elBadge.style.display = 'none';
+          elFill.style.width = '100%';
+          elFill.style.background = 'linear-gradient(90deg, #666, #888)';
+          elBar.style.background = 'rgba(255,255,255,0.05)';
+          elNow.textContent = 'Completed';
+          elTimeline.style.display = '';
+          document.querySelectorAll('.surface').forEach(function(el) { el.style.borderColor = 'rgba(255,255,255,0.06)'; });
+          if (window.setNoiseTheme) setNoiseTheme('gray');
+          return;
+        }
+
+        elHead.style.color = '#e5e5e5';
+        elSub.style.color = '#888';
+        elTimeline.style.display = '';
+        elFill.style.width = st.progress.toFixed(1) + '%';
+        elNow.textContent = 'Day ' + st.dayNum + ' of ' + PROMO_DAYS;
+
+        if (st.is2x) {
+          elLabel.textContent = 'Claude Promotion \u00b7 2X Active';
+          elLabel.style.color = 'rgba(139,92,246,0.8)';
+          elHead.innerHTML = st.label + ' <span class="countdown">' + fmt(st.ms) + '</span>';
+          elSub.innerHTML = 'Your five-hour usage is doubled during off-peak hours<br>8 AM-2 PM ET \u00b7 5-11 AM PT \u00b7 12-6 PM GMT weekdays' + (userTZ ? '<span class="tz">\u00b7 ' + userTZ + '</span>' : '');
+          elBadge.textContent = '\u26a1 2X LIMITS ACTIVE';
+          elBadge.style.cssText = 'display:inline-block;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e;';
+          elFill.style.background = 'linear-gradient(90deg, #8b5cf6, #c084fc)';
+          elBar.style.background = 'rgba(139,92,246,0.15)';
+          document.querySelectorAll('.surface').forEach(function(el) { el.style.borderColor = 'rgba(139,92,246,0.12)'; });
+          if (window.setNoiseTheme) setNoiseTheme('purple');
+        } else if (st.isActive && st.isPeak) {
+          elLabel.textContent = 'Claude Promotion \u00b7 Peak Hours';
+          elLabel.style.color = 'rgba(245,158,11,0.8)';
+          elHead.innerHTML = st.label + ' <span class="countdown">' + fmt(st.ms) + '</span>';
+          elSub.innerHTML = 'Peak hours: 8 AM-2 PM ET / 5-11 AM PT / 12-6 PM GMT weekdays<br>2X returns after peak' + (userTZ ? '<span class="tz">\u00b7 ' + userTZ + '</span>' : '');
+          elBadge.textContent = '\u23f3 PEAK HOURS \u00b7 STANDARD LIMITS';
+          elBadge.style.cssText = 'display:inline-block;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;';
+          elFill.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)';
+          elBar.style.background = 'rgba(245,158,11,0.1)';
+          document.querySelectorAll('.surface').forEach(function(el) { el.style.borderColor = 'rgba(245,158,11,0.12)'; });
+          if (window.setNoiseTheme) setNoiseTheme('gray');
+        }
+
+        // Style the countdown span
+        var cd = document.querySelector('.countdown');
+        if (cd) {
+          var grad = st.is2x ? 'linear-gradient(90deg,#8b5cf6,#c084fc)' : 'linear-gradient(90deg,#f59e0b,#fbbf24)';
+          cd.style.background = grad;
+          cd.style.backgroundClip = 'text';
+          cd.style.webkitBackgroundClip = 'text';
+          cd.style.webkitTextFillColor = 'transparent';
+        }
+      }
+
+      render();
+      setInterval(render, 1000);
+    })();
+  </script>
+</body>
+</html>
