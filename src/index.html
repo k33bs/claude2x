@@ -244,8 +244,16 @@
 
       var warpTarget = 0, warpT = 0, cx, cy;
       var content = document.getElementById('main');
+      // Desktop: hover
       content.addEventListener('mouseenter', function() { warpTarget = 1; });
       content.addEventListener('mouseleave', function() { warpTarget = 0; });
+      // Mobile: tap to toggle
+      var tapped = false;
+      content.addEventListener('touchstart', function(e) {
+        tapped = !tapped;
+        warpTarget = tapped ? 1 : 0;
+        e.preventDefault();
+      }, { passive: false });
 
       var last = performance.now();
 
