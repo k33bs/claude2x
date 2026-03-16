@@ -241,11 +241,8 @@
 
       var warpTarget = 0, warpT = 0, cx, cy;
       var content = document.getElementById('main');
-      var footer = document.querySelector('footer');
       content.addEventListener('mouseenter', function() { warpTarget = 1; });
       content.addEventListener('mouseleave', function() { warpTarget = 0; });
-      footer.addEventListener('mouseenter', function() { warpTarget = 1; });
-      footer.addEventListener('mouseleave', function() { warpTarget = 0; });
 
       var last = performance.now();
 
