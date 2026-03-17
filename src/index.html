@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Claude 2X - Usage Limits Doubled</title>
 <meta name="description" content="Track when Claude Pro 2X usage limits are active. Live countdown, peak hour detection, and more.">
 <meta property="og:title" content="Claude 2X - Usage Limits Doubled">
@@ -17,11 +17,12 @@
     color: #e5e5e5;
     cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='18'><text x='0' y='14' font-family='system-ui' font-weight='700' font-size='14' fill='%238b5cf6'>2X</text></svg>") 14 9, default;
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
+    overflow-x: hidden;
     position: relative;
     -webkit-user-select: none; user-select: none;
   }
@@ -75,7 +76,8 @@
 
   footer {
     position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
-    padding: 1.5rem; text-align: center;
+    padding: 1.5rem; padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    text-align: center;
   }
   .discord-cta { font-size: 0.875rem; color: #888; margin-bottom: 0.625rem; }
   .discord-cta a { color: #a78bfa; text-decoration: none; }
@@ -91,7 +93,7 @@
     .content { padding: 1.25rem; max-width: 100%; }
     .label { font-size: 0.75rem; }
     .surfaces .surface { font-size: 0.6875rem; }
-    footer { padding: 1rem; }
+    footer { padding: 1rem; padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
     .footer-links { gap: 0.5rem; font-size: 0.75rem; }
   }
 </style>
@@ -99,7 +101,7 @@
 <body>
 
   <canvas id="noise" aria-hidden="true"></canvas>
-  <canvas id="stars"></canvas>
+  <canvas id="stars" aria-hidden="true"></canvas>
 
   <div class="content" id="main">
     <div class="label" id="promo-label"></div>
@@ -149,12 +151,12 @@
 
   <script>
     // ── WebGL Liquid Noise Background ──
-    (function() {
+    try { (function() {
       var c = document.getElementById('noise');
       var gl = c.getContext('webgl2') || c.getContext('webgl');
       if (!gl) { c.style.display = 'none'; return; }
 
-      var w2 = gl instanceof WebGL2RenderingContext;
+      var w2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
       var vh = w2 ? '#version 300 es' : '';
       var ik = w2 ? 'in' : 'attribute';
       var ok = w2 ? 'out vec4 o;' : '';
@@ -190,7 +192,7 @@
       };
 
       function resize() {
-        var d = Math.min(devicePixelRatio, 2); c.width = innerWidth * d; c.height = innerHeight * d;
+        var d = Math.min(window.devicePixelRatio || 1, 2); c.width = innerWidth * d; c.height = innerHeight * d;
         gl.viewport(0, 0, c.width, c.height); gl.uniform2f(ur, c.width, c.height);
       }
       addEventListener('resize', resize); resize();
@@ -205,16 +207,17 @@
         else rf = requestAnimationFrame(function(now) { st = now - el * 1000; rf = requestAnimationFrame(render); });
       });
       rf = requestAnimationFrame(render);
-    })();
+    })(); } catch(e) {}
 
     // ── Canvas 3D Starfield ──
-    (function() {
+    try { (function() {
       var canvas = document.getElementById('stars');
       var ctx = canvas.getContext('2d');
+      if (!ctx) { canvas.style.display = 'none'; return; }
       var W, H;
 
       function resize() {
-        var dpr = window.devicePixelRatio || 1;
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
         W = window.innerWidth; H = window.innerHeight;
         canvas.width = W * dpr; canvas.height = H * dpr;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -223,7 +226,9 @@
 
       function rand(a, b) { return a + Math.random() * (b - a); }
 
-      var FOCAL = 700, COUNT = 1400, stars = [];
+      var FOCAL = 700;
+      var COUNT = (window.innerWidth <= 600) ? 700 : 1400;
+      var stars = [];
 
       function resetStar(s, full) {
         var z = full ? rand(0.5, 12) : rand(5, 12);
@@ -244,18 +249,163 @@
 
       var warpTarget = 0, warpT = 0, cx, cy;
       var content = document.getElementById('main');
+
+      // ── Warp Sound Engine ──
+      var AudioCtor = window.AudioContext || window.webkitAudioContext;
+      var sActx = null, sNodes = [], sEngaged = false, sTimer = null;
+      var sNoiseBuf = null;
+      var SP = { combDelay: 2, combFB: 0.81, comb2Delay: 1, comb2FB: 0.21, ringFreq: 11, ringDepth: 0.50, baseFreq: 35, detune: 10, bodyMix: 0.55, noiseMix: 0.26, fizz: 0.10, ramp: 0.384, vol: 0.25 };
+
+      function sGetNoise() {
+        if (!sNoiseBuf) {
+          var sz = sActx.sampleRate * 2;
+          sNoiseBuf = sActx.createBuffer(1, sz, sActx.sampleRate);
+          var d = sNoiseBuf.getChannelData(0);
+          for (var i = 0; i < sz; i++) d[i] = Math.random() * 2 - 1;
+        }
+        var src = sActx.createBufferSource(); src.buffer = sNoiseBuf; src.loop = true; src.start(); return src;
+      }
+      function sComb(ctx, ms, fb, dest) {
+        var dl = ctx.createDelay(0.1); dl.delayTime.value = ms / 1000;
+        var g = ctx.createGain(); g.gain.value = fb;
+        dl.connect(g); g.connect(dl); dl.connect(dest);
+        return { delay: dl, fb: g };
+      }
+      function sEngage() {
+        if (!AudioCtor) return;
+        if (!sActx) sActx = new AudioCtor();
+        if (sActx.state === 'suspended') { sActx.resume().catch(function(){}); }
+        // Cancel pending cleanup
+        if (sTimer) { clearTimeout(sTimer); sTimer = null; }
+        // If still fading out, force cleanup first
+        if (sNodes.length) { sCleanup(); }
+
+        var t = sActx.currentTime, p = SP;
+
+        var master = sActx.createGain();
+        master.gain.setValueAtTime(0, t);
+        master.gain.linearRampToValueAtTime(p.vol, t + p.ramp);
+        master.connect(sActx.destination);
+
+        var n1 = sGetNoise();
+        var nG = sActx.createGain(); nG.gain.value = p.noiseMix * 0.5;
+        var pLP = sActx.createBiquadFilter(); pLP.type = 'lowpass'; pLP.frequency.value = 3000;
+        var pHP = sActx.createBiquadFilter(); pHP.type = 'highpass'; pHP.frequency.value = 80;
+        n1.connect(pHP); pHP.connect(pLP);
+        var cM1 = sActx.createGain(); cM1.gain.value = 0.7; cM1.connect(nG);
+        var c1 = sComb(sActx, p.combDelay, p.combFB, cM1);
+        pLP.connect(c1.delay);
+        c1.delay.delayTime.setValueAtTime(p.combDelay * 1.5 / 1000, t);
+        c1.delay.delayTime.linearRampToValueAtTime(p.combDelay / 1000, t + p.ramp);
+        var cM2 = sActx.createGain(); cM2.gain.value = 0.5; cM2.connect(nG);
+        var c2 = sComb(sActx, p.comb2Delay, p.comb2FB, cM2);
+        pLP.connect(c2.delay);
+        c2.delay.delayTime.setValueAtTime(p.comb2Delay * 1.5 / 1000, t);
+        c2.delay.delayTime.linearRampToValueAtTime(p.comb2Delay / 1000, t + p.ramp);
+        var dryG = sActx.createGain(); dryG.gain.value = 0.15; pLP.connect(dryG); dryG.connect(nG);
+
+        var rOsc = sActx.createOscillator(); rOsc.type = 'sine';
+        rOsc.frequency.setValueAtTime(p.ringFreq * 0.5, t);
+        rOsc.frequency.linearRampToValueAtTime(p.ringFreq, t + p.ramp);
+        var rG = sActx.createGain(); rG.gain.value = 1 - p.ringDepth * 0.5;
+        var rMod = sActx.createGain(); rMod.gain.value = p.ringDepth * 0.5;
+        rOsc.connect(rMod); rMod.connect(rG.gain);
+        nG.connect(rG); rG.connect(master); rOsc.start();
+
+        var bG = sActx.createGain(); bG.gain.value = p.bodyMix * 0.25;
+        var bLP = sActx.createBiquadFilter(); bLP.type = 'lowpass';
+        bLP.frequency.setValueAtTime(150, t);
+        bLP.frequency.linearRampToValueAtTime(300 + p.bodyMix * 200, t + p.ramp);
+        bLP.Q.value = 2; bLP.connect(bG); bG.connect(master);
+        var oscs = [];
+        for (var i = 0; i < 5; i++) {
+          var o = sActx.createOscillator(); o.type = 'sawtooth';
+          o.frequency.setValueAtTime(p.baseFreq * 0.7, t);
+          o.frequency.linearRampToValueAtTime(p.baseFreq, t + p.ramp);
+          o.detune.value = (i - 2) * p.detune;
+          var oG = sActx.createGain(); oG.gain.value = 0.15;
+          o.connect(oG); oG.connect(bLP); o.start(); oscs.push({ o: o, g: oG });
+        }
+
+        var n2 = sGetNoise();
+        var fBP = sActx.createBiquadFilter(); fBP.type = 'bandpass';
+        fBP.frequency.setValueAtTime(1500, t);
+        fBP.frequency.exponentialRampToValueAtTime(3500, t + p.ramp * 0.6);
+        fBP.Q.value = 1.5;
+        var fG = sActx.createGain();
+        fG.gain.setValueAtTime(0, t);
+        fG.gain.linearRampToValueAtTime(p.fizz * 0.2, t + p.ramp * 0.5);
+        n2.connect(fBP); fBP.connect(fG); fG.connect(master);
+
+        sNodes = [
+          { t: 'b', n: n1 }, { t: 'b', n: n2 }, { t: 'o', n: rOsc },
+          { t: 'g', n: master }, { t: 'g', n: nG }, { t: 'g', n: rG }, { t: 'g', n: rMod },
+          { t: 'g', n: bG }, { t: 'g', n: fG }, { t: 'g', n: dryG },
+          { t: 'g', n: cM1 }, { t: 'g', n: cM2 },
+          { t: 'f', n: pLP }, { t: 'f', n: pHP }, { t: 'f', n: bLP }, { t: 'f', n: fBP },
+          { t: 'd', n: c1.delay }, { t: 'd', n: c2.delay },
+          { t: 'g', n: c1.fb }, { t: 'g', n: c2.fb },
+        ];
+        oscs.forEach(function(pair) { sNodes.push({ t: 'o', n: pair.o }); sNodes.push({ t: 'g', n: pair.g }); });
+        sEngaged = true;
+      }
+      function sCleanup() {
+        sNodes.forEach(function(n) {
+          try { if (n.t === 'o' || n.t === 'b') n.n.stop(); } catch(e) {}
+          try { n.n.disconnect(); } catch(e) {}
+        });
+        sNodes = []; sEngaged = false;
+      }
+      function sDisengage() {
+        if (!sActx || !sNodes.length) return;
+        var t = sActx.currentTime, rd = SP.ramp * 0.5;
+        sNodes.forEach(function(n) {
+          if (n.t === 'g') { n.n.gain.cancelScheduledValues(t); n.n.gain.setValueAtTime(n.n.gain.value, t); n.n.gain.linearRampToValueAtTime(0, t + rd); }
+          if (n.t === 'o') { n.n.frequency.cancelScheduledValues(t); var c = n.n.frequency.value; n.n.frequency.setValueAtTime(c, t); if (c > 20) n.n.frequency.exponentialRampToValueAtTime(Math.max(10, c * 0.3), t + rd); }
+          if (n.t === 'f' && n.n.frequency) { n.n.frequency.cancelScheduledValues(t); n.n.frequency.setValueAtTime(n.n.frequency.value, t); n.n.frequency.linearRampToValueAtTime(Math.max(50, n.n.frequency.value * 0.3), t + rd); }
+          if (n.t === 'd') { n.n.delayTime.cancelScheduledValues(t); n.n.delayTime.setValueAtTime(n.n.delayTime.value, t); n.n.delayTime.linearRampToValueAtTime(n.n.delayTime.value * 2, t + rd); }
+        });
+        sTimer = setTimeout(sCleanup, rd * 1000 + 200);
+      }
+
+      // Unlock audio on first interaction
+      function unlockAudio() {
+        if (!AudioCtor) return;
+        if (!sActx) sActx = new AudioCtor();
+        sActx.resume().catch(function(){});
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+      }
+      document.addEventListener('click', unlockAudio);
+      document.addEventListener('touchstart', unlockAudio);
+
+      function warpOn() {
+        warpTarget = 1;
+        if (sTimer) { clearTimeout(sTimer); sTimer = null; }
+        if (!sEngaged) sEngage();
+      }
+      function warpOff() {
+        warpTarget = 0;
+        if (sEngaged) sDisengage();
+      }
+
       // Desktop: hover
-      content.addEventListener('mouseenter', function() { warpTarget = 1; });
-      content.addEventListener('mouseleave', function() { warpTarget = 0; });
+      content.addEventListener('mouseenter', warpOn);
+      content.addEventListener('mouseleave', warpOff);
       // Mobile: tap to toggle
       var tapped = false;
       content.addEventListener('touchstart', function(e) {
         tapped = !tapped;
-        warpTarget = tapped ? 1 : 0;
+        if (tapped) warpOn(); else warpOff();
         e.preventDefault();
       }, { passive: false });
 
-      var last = performance.now();
+      // Stop sound+animation on tab hide
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden && sEngaged) { tapped = false; warpOff(); }
+      });
+
+      var last = performance.now(), sfRaf;
 
       function frame(now) {
         var dt = Math.min(now - last, 50); last = now;
@@ -313,10 +463,17 @@
         }
 
         ctx.globalAlpha = 1;
-        requestAnimationFrame(frame);
+        sfRaf = requestAnimationFrame(frame);
       }
-      requestAnimationFrame(frame);
-    })();
+
+      // Pause starfield on tab hide
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) { cancelAnimationFrame(sfRaf); }
+        else { last = performance.now(); sfRaf = requestAnimationFrame(frame); }
+      });
+
+      sfRaf = requestAnimationFrame(frame);
+    })(); } catch(e) {}
 
     // ── Promotion Countdown ──
     (function() {
@@ -333,7 +490,7 @@
       var elNow = document.getElementById('timeline-now');
       var elBar = document.getElementById('timeline-bar');
       var elTimeline = document.getElementById('timeline');
-      var elSurfaces = document.getElementById('surfaces');
+      var surfaceEls = document.querySelectorAll('.surface');
 
       function getUserTZ() {
         try { return Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, ' '); }
@@ -354,8 +511,9 @@
         if (is2x) {
           var next = new Date(now); next.setUTCHours(PEAK_START, 0, 0, 0);
           if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
-          // Skip weekends
           while (next.getUTCDay() === 0 || next.getUTCDay() === 6) next.setUTCDate(next.getUTCDate() + 1);
+          // Clamp to promo end
+          if (next.getTime() > PROMO_END.getTime()) next = new Date(PROMO_END.getTime());
           ms = next.getTime() - now.getTime();
           label = '2X ends in';
         } else if (isActive) {
@@ -379,9 +537,15 @@
         var h = Math.floor(s / 3600);
         var m = Math.floor((s % 3600) / 60);
         var sec = s % 60;
-        if (h > 24) { var d = Math.floor(h / 24); return d + 'd ' + (h % 24) + 'h'; }
+        if (h >= 24) { var d = Math.floor(h / 24); return d + 'd ' + (h % 24) + 'h'; }
         return h > 0 ? h + 'h ' + m + 'm ' + sec + 's' : m + 'm ' + sec + 's';
       }
+
+      function setSurfaceBorder(color) {
+        for (var i = 0; i < surfaceEls.length; i++) surfaceEls[i].style.borderColor = color;
+      }
+
+      var intervalId = null;
 
       function render() {
         var st = getState();
@@ -398,15 +562,14 @@
           elFill.style.background = 'linear-gradient(90deg, #666, #888)';
           elBar.style.background = 'rgba(255,255,255,0.05)';
           elNow.textContent = 'Completed';
-          elTimeline.style.display = '';
-          document.querySelectorAll('.surface').forEach(function(el) { el.style.borderColor = 'rgba(255,255,255,0.06)'; });
+          setSurfaceBorder('rgba(255,255,255,0.06)');
           if (window.setNoiseTheme) setNoiseTheme('gray');
+          if (intervalId) { clearInterval(intervalId); intervalId = null; }
           return;
         }
 
         elHead.style.color = '#e5e5e5';
         elSub.style.color = '#888';
-        elTimeline.style.display = '';
         elFill.style.width = st.progress.toFixed(1) + '%';
         elNow.textContent = 'Day ' + st.dayNum + ' of ' + PROMO_DAYS;
 
@@ -414,12 +577,12 @@
           elLabel.textContent = 'Claude Promotion \u00b7 2X Active';
           elLabel.style.color = 'rgba(139,92,246,0.8)';
           elHead.innerHTML = st.label + ' <span class="countdown">' + fmt(st.ms) + '</span>';
-          elSub.innerHTML = 'Your five-hour usage is doubled during off-peak hours<br>8 AM-2 PM ET \u00b7 5-11 AM PT \u00b7 12-6 PM GMT weekdays' + (userTZ ? '<span class="tz">' + userTZ + '</span>' : '');
+          elSub.innerHTML = 'Your five-hour usage is doubled outside peak hours<br>Peak: 8 AM-2 PM ET \u00b7 5-11 AM PT \u00b7 12-6 PM GMT weekdays' + (userTZ ? '<span class="tz">' + userTZ + '</span>' : '');
           elBadge.textContent = '\u26a1 2X LIMITS ACTIVE';
           elBadge.style.cssText = 'display:inline-block;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e;';
           elFill.style.background = 'linear-gradient(90deg, #8b5cf6, #c084fc)';
           elBar.style.background = 'rgba(139,92,246,0.15)';
-          document.querySelectorAll('.surface').forEach(function(el) { el.style.borderColor = 'rgba(139,92,246,0.12)'; });
+          setSurfaceBorder('rgba(139,92,246,0.12)');
           if (window.setNoiseTheme) setNoiseTheme('purple');
         } else if (st.isActive && st.isPeak) {
           elLabel.textContent = 'Claude Promotion \u00b7 Peak Hours';
@@ -430,11 +593,10 @@
           elBadge.style.cssText = 'display:inline-block;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;';
           elFill.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)';
           elBar.style.background = 'rgba(245,158,11,0.1)';
-          document.querySelectorAll('.surface').forEach(function(el) { el.style.borderColor = 'rgba(245,158,11,0.12)'; });
+          setSurfaceBorder('rgba(245,158,11,0.12)');
           if (window.setNoiseTheme) setNoiseTheme('gray');
         }
 
-        // Style the countdown span
         var cd = document.querySelector('.countdown');
         if (cd) {
           var grad = st.is2x ? 'linear-gradient(90deg,#8b5cf6,#c084fc)' : 'linear-gradient(90deg,#f59e0b,#fbbf24)';
@@ -446,7 +608,7 @@
       }
 
       render();
-      setInterval(render, 1000);
+      intervalId = setInterval(render, 1000);
     })();
   </script>
 </body>
